@@ -1,7 +1,7 @@
 """
 app.py — CSV Email Validator (standalone)
-Upload CSV → pick Best Email + All Emails columns → validate with early-stop
-on first Deliverable → styled 3-sheet XLSX export with full audit trail.
+Upload CSV -> pick Best Email + All Emails columns -> validate with early-stop
+on first Deliverable -> styled 3-sheet XLSX export with full audit trail.
 """
 
 import streamlit as st
@@ -44,7 +44,7 @@ SUPPRESS_PREFIXES = [
     'bounces','unsubscribe','notifications','notification','newsletter',
     'newsletters','postmaster','webmaster','auto-reply','autoreply','daemon',
     'robot','alerts','alert','system',
-}
+]
 FREE_EMAIL_DOMAINS = {
     "gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com",
     "icloud.com","protonmail.com","zoho.com","live.com","msn.com",
@@ -340,7 +340,6 @@ def build_xlsx(results):
         _cl(ws,ri,3,orig,rf,_fn(n="Courier New",s=9,c="888888"),_lt())
         _cl(ws,ri,4,em,ef or rf,_fn(b=True,n="Courier New",s=9),_lt())
         sf_ = SF.get(st_)
-        w_font = _fn(b=True,c="FFFFFF",s=9) if sf_ else _fn(s=9)
         w_col = "FFFFFF" if sf_ else "111111"
         _cl(ws,ri,5,st_ or "—",sf_ or rf,_fn(b=bool(sf_),c=w_col,s=9),_ct())
         _cl(ws,ri,6,cf if cf is not None else "—",_cf(cf) or rf,_fn(b=True,s=9),_ct())
@@ -516,9 +515,9 @@ with st.sidebar:
             f'Extra checks saved by early-stop: <strong style="color:#22d3ee">{saved}</strong></div>', unsafe_allow_html=True)
     st.divider()
     st.markdown('<div style="font-size:9px;color:#333;line-height:1.8">'
-        'Upload CSV → pick 2 columns<br>'
-        'Best Email → validated first<br>'
-        'All Emails → fallback pool<br>'
+        'Upload CSV -> pick 2 columns<br>'
+        'Best Email -> validated first<br>'
+        'All Emails -> fallback pool<br>'
         'Stops on first ✅ Deliverable</div>', unsafe_allow_html=True)
 
 # ── Session State ─────────────────────────────────────────────────────────────
@@ -719,7 +718,7 @@ if df is not None:
                     else:
                         st.session_state.cv_log.append(("skip", f"{ce} — {cr}"))
                 if was_fb:
-                    st.session_state.cv_log.append(("ok", f"↻ {best} → {val_em}"))
+                    st.session_state.cv_log.append(("ok", f"↻ {best} -> {val_em}"))
                 cf = confidence_score(val_em, val_res) if val_res else None
                 st.session_state.cv_results.append({"row_idx":rn,"domain":dom,"original_email":best,
                     "validated_email":val_em,"all_emails":ae,"val":val_res,"was_fallback":was_fb,
@@ -739,7 +738,7 @@ if df is None and not st.session_state.cv_results:
             (semicolon, comma, or pipe separated) as fallback pool.<br><br>
             <strong style="color:#16a34a">How it works:</strong><br>
             1. Validates the <strong>Best Email</strong> first<br>
-            2. If not deliverable → tries <strong>All Emails</strong> in tier order<br>
+            2. If not deliverable -> tries <strong>All Emails</strong> in tier order<br>
             3. <strong>Stops immediately</strong> when first Deliverable is found<br>
             4. Exports styled 3-sheet XLSX with full audit trail
         </div>
