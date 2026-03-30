@@ -44,7 +44,7 @@ SUPPRESS_PREFIXES = [
     'bounces','unsubscribe','notifications','notification','newsletter',
     'newsletters','postmaster','webmaster','auto-reply','autoreply','daemon',
     'robot','alerts','alert','system',
-]
+}
 FREE_EMAIL_DOMAINS = {
     "gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com",
     "icloud.com","protonmail.com","zoho.com","live.com","msn.com",
@@ -246,7 +246,7 @@ def validate_with_early_stop(best_email, all_emails):
         v = validate_email_full(email)
         log.append((email, v["status"], v["reason"]))
         if v["status"] == "Deliverable":
-            return email, v, True, log  # ← STOP HERE
+            return email, v, True, log
         if v["status"] == "Risky" and best_risky_val is None:
             best_risky_val = v; best_risky_email = email
 
@@ -281,7 +281,7 @@ def _cf(sc): return None if sc is None else (CF_H if sc >= 75 else (CF_M if sc >
 
 def _hdr(ws, r, c, v, w=None):
     cl = ws.cell(row=r, column=c, value=v)
-    cl.fill = HDR; cl.font = _fn(True, "FFFFFF"); cl.alignment = _ct(); cl.border = _bd()
+    cl.fill = HDR; cl.font = _fn(b=True, c="FFFFFF"); cl.alignment = _ct(); cl.border = _bd()
     if w: ws.column_dimensions[get_column_letter(c)].width = w
     return cl
 
@@ -296,7 +296,7 @@ def _cl(ws, r, c, v, fl=None, fn_=None, al=None):
 def _stats_sheet(wb, name, rows, title, sub=""):
     ws = wb.create_sheet(name)
     ws.column_dimensions["A"].width = 30; ws.column_dimensions["B"].width = 10; ws.column_dimensions["C"].width = 32
-    t = ws.cell(row=1, column=1, value=title); t.font = _fn(True, s=15); t.fill = _mf("F9FAFB")
+    t = ws.cell(row=1, column=1, value=title); t.font = _fn(b=True, s=15); t.fill = _mf("F9FAFB")
     ws.merge_cells("A1:C1"); ws.row_dimensions[1].height = 28; t.alignment = _lt()
     if sub:
         s = ws.cell(row=2, column=1, value=sub); s.font = _fn(c="999999", s=9, i=True); ws.merge_cells("A2:C2")
@@ -310,7 +310,7 @@ def _stats_sheet(wb, name, rows, title, sub=""):
     for i, (label, value, key) in enumerate(rows, 5):
         fg = FG.get(key, FG["default"]); bg = BG.get(key, BG["default"]); fl = _mf(bg)
         _cl(ws, i, 1, label, fl, _fn(c=fg, s=10), _lt())
-        _cl(ws, i, 2, value, fl, _fn(c=fg, s=11, True), _ct())
+        _cl(ws, i, 2, value, fl, _fn(b=True, c=fg, s=11), _ct())
         ws.row_dimensions[i].height = 21
         if isinstance(value, (int, float)) and key not in ("avg",):
             pct = min(float(value) / total, 1.0); n = int(pct * 22)
@@ -338,22 +338,27 @@ def build_xlsx(results):
         _cl(ws,ri,1,ri-1,rf,_fn(),_ct())
         _cl(ws,ri,2,row.get("domain",""),rf,_fn(),_lt())
         _cl(ws,ri,3,orig,rf,_fn(n="Courier New",s=9,c="888888"),_lt())
-        _cl(ws,ri,4,em,ef or rf,_fn(n="Courier New",s=9,True),_lt())
+        _cl(ws,ri,4,em,ef or rf,_fn(b=True,n="Courier New",s=9),_lt())
         sf_ = SF.get(st_)
-        _cl(ws,ri,5,st_ or "—",sf_ or rf,_fn(True,c="FFFFFF" if sf_ else "111111"),_ct())
-        _cl(ws,ri,6,cf if cf is not None else "—",_cf(cf) or rf,_fn(True),_ct())
-        _cl(ws,ri,7,tier_short(em) if em else "—",_tf(tier_short(em)) if em else rf,_fn(),_ct())
-        _cl(ws,ri,8,v.get("reason","—") if v else "—",rf,_fn(),_lt())
+        w_font = _fn(b=True,c="FFFFFF",s=9) if sf_ else _fn(s=9)
+        w_col = "FFFFFF" if sf_ else "111111"
+        _cl(ws,ri,5,st_ or "—",sf_ or rf,_fn(b=bool(sf_),c=w_col,s=9),_ct())
+        _cl(ws,ri,6,cf if cf is not None else "—",_cf(cf) or rf,_fn(b=True,s=9),_ct())
+        _cl(ws,ri,7,tier_short(em) if em else "—",_tf(tier_short(em)) if em else rf,_fn(s=9),_ct())
+        _cl(ws,ri,8,v.get("reason","—") if v else "—",rf,_fn(s=9),_lt())
         for c_idx, key in [(9,"spf"),(10,"dmarc"),(11,"catch_all")]:
             ok = v.get(key) if v else None
-            _cl(ws,ri,c_idx,"✓" if ok else "✗",rf,_fn(c="16A34A" if ok else "DC2626",s=11) if ok is not None else _fn(c="AAAAAA"),_ct())
-        _cl(ws,ri,12,"↻ Yes" if fb else "—",rf,_fn(c="0891B2" if fb else "AAAAAA",bold=fb),_ct())
-        _cl(ws,ri,13,len(row.get("all_emails",[])),rf,_fn(),_ct())
-        _cl(ws,ri,14,len(row.get("val_log",[])),rf,_fn(),_ct())
+            c_val = "16A34A" if ok else "DC2626"
+            f_val = _fn(c=c_val,s=11) if ok is not None else _fn(c="AAAAAA",s=11)
+            _cl(ws,ri,c_idx,"✓" if ok else "✗",rf,f_val,_ct())
+        fb_c = "0891B2" if fb else "AAAAAA"
+        _cl(ws,ri,12,"↻ Yes" if fb else "—",rf,_fn(b=fb,c=fb_c,s=9),_ct())
+        _cl(ws,ri,13,len(row.get("all_emails",[])),rf,_fn(s=9),_ct())
+        _cl(ws,ri,14,len(row.get("val_log",[])),rf,_fn(s=9),_ct())
         _cl(ws,ri,15,"; ".join(row.get("all_emails",[])),rf,_fn(n="Courier New",s=8,c="666666"),_lt())
 
     lr = len(results) + 3
-    ws.cell(row=lr, column=1, value="Legend:").font = _fn(True, s=9)
+    ws.cell(row=lr, column=1, value="Legend:").font = _fn(b=True, s=9)
     for col, fl_, lb in [(2,EF_D,"Deliverable"),(4,EF_R,"Risky"),(6,EF_B,"Not Deliverable"),(8,EF_F,"Fallback")]:
         c = ws.cell(row=lr, column=col, value=lb); c.fill = fl_; c.font = _fn(s=9); c.alignment = _ct()
 
@@ -371,13 +376,15 @@ def build_xlsx(results):
             rf2 = _rf(cs) if cs in ("Deliverable","Risky","Not Deliverable") else RF_N
             if is_f: rf2 = EF_D if cs == "Deliverable" else (EF_R if cs == "Risky" else EF_B)
             _cl(ws2,r2,1,f"{ri}.{li+1}",rf2,_fn(s=9),_ct())
-            _cl(ws2,r2,2,dom if li == 0 else "",rf2,_fn(),_lt())
+            _cl(ws2,r2,2,dom if li == 0 else "",rf2,_fn(s=9),_lt())
             _cl(ws2,r2,3,orig if li == 0 else "",rf2,_fn(n="Courier New",s=9,c="888888"),_lt())
-            _cl(ws2,r2,4,ce,rf2,_fn(n="Courier New",s=9,bold=is_f),_lt())
+            _cl(ws2,r2,4,ce,rf2,_fn(b=is_f,n="Courier New",s=9),_lt())
             sf2 = SF.get(cs)
-            _cl(ws2,r2,5,cs or "skipped",sf2 or rf2,_fn(bold=bool(sf2),c="FFFFFF" if sf2 else "111111",s=9),_ct())
+            s_col = "FFFFFF" if sf2 else "111111"
+            _cl(ws2,r2,5,cs or "skipped",sf2 or rf2,_fn(b=bool(sf2),c=s_col,s=9),_ct())
             _cl(ws2,r2,6,cr,rf2,_fn(s=9),_lt())
-            _cl(ws2,r2,7,"✓ CHOSEN" if is_f else "",EF_F if is_f else rf2,_fn(c="0891B2",True,s=9),_ct())
+            f_font = _fn(b=True,c="0891B2",s=9) if is_f else _fn(s=9)
+            _cl(ws2,r2,7,"✓ CHOSEN" if is_f else "",EF_F if is_f else rf2,f_font,_ct())
             ws2.row_dimensions[r2].height = 15; r2 += 1
 
     # ── Sheet 3: Stats ────────────────────────────────────────────────
@@ -391,7 +398,7 @@ def build_xlsx(results):
     ac = round(tc/nt, 1) if nt else 0
     confs = [r.get("confidence") for r in results if r.get("confidence") is not None]
     avgc = round(sum(confs)/len(confs), 1) if confs else "—"
-    saved = tc - nt  # extra checks beyond first
+    saved = tc - nt
 
     _stats_sheet(wb, "Stats", [
         ("Total rows processed", nt, "total"),
@@ -567,14 +574,12 @@ if df is not None:
         st.markdown('<div style="font-size:12px;font-weight:700;color:#111;margin-bottom:4px">Domain (optional)</div>', unsafe_allow_html=True)
         dom_col = st.selectbox("d", ["— Auto —"] + cols, index=(cols.index(dd)+1 if dd else 0), key="s_d", label_visibility="collapsed")
 
-    # Previews
     st.markdown(f'<div class="cp"><div class="cp-l">Best Email column</div><div class="cp-v">' +
                 "<br>".join(str(v)[:60] for v in df[best_col].head(3).values) + '</div></div>', unsafe_allow_html=True)
     if all_col != "— None —":
         st.markdown(f'<div class="cp"><div class="cp-l">All Emails column</div><div class="cp-v">' +
                     "<br>".join(str(v)[:80] for v in df[all_col].head(3).values) + '</div></div>', unsafe_allow_html=True)
 
-    # Build queue
     queue = []
     for i, row in df.iterrows():
         br = str(row[best_col]).strip() if pd.notna(row[best_col]) else ""
@@ -597,7 +602,6 @@ if df is not None:
     else:
         st.markdown('<div class="mh-warn">No valid emails found. Check your column mapping.</div>', unsafe_allow_html=True)
 
-    # Controls
     running = st.session_state.cv_running
     vc1, vc2, vc3 = st.columns([3, 1, 2])
     with vc1:
@@ -618,7 +622,6 @@ if df is not None:
     with vc3:
         st.markdown('<div style="font-size:10.5px;color:#aaa;padding-top:12px">⏱ ~3-8s/email · stops on first ✅</div>', unsafe_allow_html=True)
 
-    # Progress
     res = st.session_state.cv_results; cq = st.session_state.get("cv_queue", queue); ci = st.session_state.cv_idx; tot = len(cq)
     if running and tot > 0:
         pct = round(ci/tot*100, 1); cur = cq[ci] if ci < tot else None
@@ -629,7 +632,6 @@ if df is not None:
             f'<div style="font-size:20px;font-weight:800;color:{ACCENT};text-align:right;margin-top:-4px">{pct}%</div>',
             unsafe_allow_html=True)
 
-    # Log
     ll = st.session_state.cv_log
     if ll:
         h = ""
@@ -642,7 +644,6 @@ if df is not None:
             elif kind == "stop": h += f'<div class="lx">  ■ STOP — {text}</div>'
         st.markdown(f'<div class="mh-log">{h}</div>', unsafe_allow_html=True)
 
-    # Metrics
     if res:
         nvc = sum(1 for r in res if r.get("val"))
         nd = sum(1 for r in res if (r.get("val",{}) or {}).get("status")=="Deliverable")
@@ -655,7 +656,6 @@ if df is not None:
         m3.metric("⚠️ Risky", nri); m4.metric("❌ Failed", nb)
         m5.metric("↻ Fallback", nfb); m6.metric("Emails Checked", tc)
 
-    # Results Table
     if res:
         srch = st.text_input("Filter...", placeholder="domain or email...", label_visibility="collapsed", key="cv_sr")
         rows = []
@@ -693,7 +693,6 @@ if df is not None:
                 "Pool":st.column_config.NumberColumn("Pool",width=42),
                 "Checked":st.column_config.NumberColumn("Checked",width=58)})
 
-    # Engine
     if st.session_state.cv_running:
         q = st.session_state.cv_queue; idx = st.session_state.cv_idx; tot = len(q)
         if idx >= tot:
@@ -729,7 +728,6 @@ if df is not None:
             if st.session_state.cv_idx >= tot: st.session_state.cv_running = False
             st.rerun()
 
-# Empty state
 if df is None and not st.session_state.cv_results:
     st.markdown("""
     <div style="text-align:center;padding:60px 0">
