@@ -44,7 +44,7 @@ SUPPRESS_PREFIXES = [
     'bounces','unsubscribe','notifications','notification','newsletter',
     'newsletters','postmaster','webmaster','auto-reply','autoreply','daemon',
     'robot','alerts','alert','system',
-]
+}
 FREE_EMAIL_DOMAINS = {
     "gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com",
     "icloud.com","protonmail.com","zoho.com","live.com","msn.com",
@@ -116,7 +116,6 @@ def conf_color(sc):
     return "#dc2626"
 
 def parse_email_cell(cell_value):
-    """Parse a cell that may contain one or multiple emails separated by delimiters."""
     if pd.isna(cell_value) or not str(cell_value).strip():
         return []
     text = str(cell_value).strip()
@@ -215,15 +214,8 @@ def validate_email_full(email):
             "spf": spf, "dmarc": dmarc, "mailbox": mbox, "disposable": disp_,
             "free": free, "catch_all": ca}
 
-
 def validate_with_early_stop(best_email, all_emails):
-    """
-    Validate best_email first. If not Deliverable, try all_emails in tier order.
-    STOP immediately when first Deliverable is found.
-    Returns (chosen_email, validation_result, was_fallback, validation_log).
-    """
     log = []
-
     if not best_email or not is_valid_email(best_email):
         log.append((best_email or "(empty)", "skipped", "Invalid format"))
         for email in sort_by_tier(all_emails):
@@ -253,7 +245,6 @@ def validate_with_early_stop(best_email, all_emails):
     if best_risky_val:
         return best_risky_email, best_risky_val, True, log
     return best_email, val, False, log
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  XLSX BUILDER
@@ -319,47 +310,58 @@ def _stats_sheet(wb, name, rows, title, sub=""):
             _cl(ws, i, 3, "", fl)
     return ws
 
-
-def build_xlsx(results):
+def build_xlsx(results, original_columns):
     wb = Workbook()
 
-    # ── Sheet 1: Results ──────────────────────────────────────────────
+    # ── Sheet 1: Results (Original CSV Data + Validation appended) ────
     ws = wb.active; ws.title = "Results"; ws.freeze_panes = "A2"; ws.row_dimensions[1].height = 26
-    COLS = [("#",5),("Domain",22),("Original Email",32),("Validated Email",32),
-            ("Status",16),("Score",8),("Tier",9),("Reason",22),
-            ("SPF",6),("DMARC",7),("Catch-all",10),("Fallback?",10),
-            ("Pool Size",10),("Emails Checked",14),("All Emails",50)]
-    for ci, (n, w) in enumerate(COLS, 1): _hdr(ws, 1, ci, n, w)
+    
+    for ci, col_name in enumerate(original_columns, 1):
+        w = min(max(len(str(col_name)) * 2, 15), 40)
+        _hdr(ws, 1, ci, col_name, w=w)
+
+    val_cols = [
+        ("Validated Email",32), ("Status",16), ("Score",8), ("Tier",9),
+        ("Reason",22), ("SPF",6), ("DMARC",7), ("Catch-all",10),
+        ("Fallback?",10), ("Emails Checked",14)
+    ]
+    val_offset = len(original_columns)
+    for ci, (n, w) in enumerate(val_cols, val_offset + 1):
+        _hdr(ws, 1, ci, n, w=w)
 
     for ri, row in enumerate(results, 2):
+        orig_data = row.get("original_row_data", {})
+        
+        for ci, col_name in enumerate(original_columns, 1):
+            val = orig_data.get(col_name, "")
+            try:
+                if pd.isna(val): val = ""
+            except TypeError:
+                pass
+            _cl(ws, ri, ci, val, RF_N, _fn(s=9), _lt())
+
         v = row.get("val") or {}; st_ = v.get("status", ""); fb = row.get("was_fallback")
-        em = row.get("validated_email", ""); orig = row.get("original_email", ""); cf = row.get("confidence")
-        rf = _rf(st_); ef = _ef(st_, fb); ws.row_dimensions[ri].height = 17
-        _cl(ws,ri,1,ri-1,rf,_fn(),_ct())
-        _cl(ws,ri,2,row.get("domain",""),rf,_fn(),_lt())
-        _cl(ws,ri,3,orig,rf,_fn(n="Courier New",s=9,c="888888"),_lt())
-        _cl(ws,ri,4,em,ef or rf,_fn(b=True,n="Courier New",s=9),_lt())
+        em = row.get("validated_email", ""); cf = row.get("confidence")
+        rf = _rf(st_); ef = _ef(st_, fb)
+
+        v_idx = val_offset + 1
+        _cl(ws, ri, v_idx, em, ef or rf, _fn(b=True, n="Courier New", s=9), _lt())
         sf_ = SF.get(st_)
         w_col = "FFFFFF" if sf_ else "111111"
-        _cl(ws,ri,5,st_ or "—",sf_ or rf,_fn(b=bool(sf_),c=w_col,s=9),_ct())
-        _cl(ws,ri,6,cf if cf is not None else "—",_cf(cf) or rf,_fn(b=True,s=9),_ct())
-        _cl(ws,ri,7,tier_short(em) if em else "—",_tf(tier_short(em)) if em else rf,_fn(s=9),_ct())
-        _cl(ws,ri,8,v.get("reason","—") if v else "—",rf,_fn(s=9),_lt())
-        for c_idx, key in [(9,"spf"),(10,"dmarc"),(11,"catch_all")]:
+        _cl(ws, ri, v_idx+1, st_ or "—", sf_ or rf, _fn(b=bool(sf_), c=w_col, s=9), _ct())
+        _cl(ws, ri, v_idx+2, cf if cf is not None else "—", _cf(cf) or rf, _fn(b=True, s=9), _ct())
+        _cl(ws, ri, v_idx+3, tier_short(em) if em else "—", _tf(tier_short(em)) if em else rf, _fn(s=9), _ct())
+        _cl(ws, ri, v_idx+4, v.get("reason","—") if v else "—", rf, _fn(s=9), _lt())
+        
+        for c_off, key in [(5,"spf"),(6,"dmarc"),(7,"catch_all")]:
             ok = v.get(key) if v else None
             c_val = "16A34A" if ok else "DC2626"
-            f_val = _fn(c=c_val,s=11) if ok is not None else _fn(c="AAAAAA",s=11)
-            _cl(ws,ri,c_idx,"✓" if ok else "✗",rf,f_val,_ct())
+            f_val = _fn(c=c_val, s=11) if ok is not None else _fn(c="AAAAAA", s=11)
+            _cl(ws, ri, v_idx+c_off, "Yes" if ok else "No", rf, f_val, _ct())
+            
         fb_c = "0891B2" if fb else "AAAAAA"
-        _cl(ws,ri,12,"↻ Yes" if fb else "—",rf,_fn(b=fb,c=fb_c,s=9),_ct())
-        _cl(ws,ri,13,len(row.get("all_emails",[])),rf,_fn(s=9),_ct())
-        _cl(ws,ri,14,len(row.get("val_log",[])),rf,_fn(s=9),_ct())
-        _cl(ws,ri,15,"; ".join(row.get("all_emails",[])),rf,_fn(n="Courier New",s=8,c="666666"),_lt())
-
-    lr = len(results) + 3
-    ws.cell(row=lr, column=1, value="Legend:").font = _fn(b=True, s=9)
-    for col, fl_, lb in [(2,EF_D,"Deliverable"),(4,EF_R,"Risky"),(6,EF_B,"Not Deliverable"),(8,EF_F,"Fallback")]:
-        c = ws.cell(row=lr, column=col, value=lb); c.fill = fl_; c.font = _fn(s=9); c.alignment = _ct()
+        _cl(ws, ri, v_idx+8, "Yes" if fb else "No", rf, _fn(b=fb, c=fb_c, s=9), _ct())
+        _cl(ws, ri, v_idx+9, len(row.get("val_log",[])), rf, _fn(s=9), _ct())
 
     # ── Sheet 2: Validation Log ───────────────────────────────────────
     ws2 = wb.create_sheet("Validation Log"); ws2.freeze_panes = "A2"; ws2.row_dimensions[1].height = 26
@@ -383,7 +385,7 @@ def build_xlsx(results):
             _cl(ws2,r2,5,cs or "skipped",sf2 or rf2,_fn(b=bool(sf2),c=s_col,s=9),_ct())
             _cl(ws2,r2,6,cr,rf2,_fn(s=9),_lt())
             f_font = _fn(b=True,c="0891B2",s=9) if is_f else _fn(s=9)
-            _cl(ws2,r2,7,"✓ CHOSEN" if is_f else "",EF_F if is_f else rf2,f_font,_ct())
+            _cl(ws2,r2,7,"CHOSEN" if is_f else "",EF_F if is_f else rf2,f_font,_ct())
             ws2.row_dimensions[r2].height = 15; r2 += 1
 
     # ── Sheet 3: Stats ────────────────────────────────────────────────
@@ -392,29 +394,30 @@ def build_xlsx(results):
     nri = sum(1 for r in results if (r.get("val",{}) or {}).get("status")=="Risky")
     nb = sum(1 for r in results if (r.get("val",{}) or {}).get("status")=="Not Deliverable")
     nfb = sum(1 for r in results if r.get("was_fallback"))
-    nne = sum(1 for r in results if not r.get("original_email") and not r.get("all_emails"))
+    n_empty = sum(1 for r in results if not r.get("val"))
     tc = sum(len(r.get("val_log",[])) for r in results)
-    ac = round(tc/nt, 1) if nt else 0
+    n_val_rows = nt - n_empty
+    ac = round(tc/n_val_rows, 1) if n_val_rows else 0
     confs = [r.get("confidence") for r in results if r.get("confidence") is not None]
     avgc = round(sum(confs)/len(confs), 1) if confs else "—"
-    saved = tc - nt
+    saved = tc - n_val_rows
 
     _stats_sheet(wb, "Stats", [
-        ("Total rows processed", nt, "total"),
-        ("Rows with no email", nne, "none"),
+        ("Total rows in CSV", nt, "total"),
+        ("Rows with no email (retained)", n_empty, "none"),
+        ("Rows validated", n_val_rows, "total"),
         ("Deliverable", nd, "deliverable"),
         ("Risky", nri, "risky"),
         ("Not Deliverable", nb, "fail"),
         ("Fallback emails used", nfb, "fallback"),
         ("Total emails checked", tc, "total"),
         ("Extra checks (fallbacks)", saved, "fallback"),
-        ("Avg checks per row", ac, "avg"),
+        ("Avg checks per valid row", ac, "avg"),
         ("Avg confidence score", avgc, "avg"),
-    ], "CSV Email Validator Results", f"{nt} rows · {tc} emails checked · {saved} fallback checks")
+    ], "CSV Email Validator Results", f"{nt} total rows · {n_val_rows} validated · {n_empty} empty retained")
 
     out = io.BytesIO(); wb.save(out); out.seek(0)
     return out.getvalue()
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  STREAMLIT APP
@@ -446,7 +449,6 @@ st.markdown(f"""
 .mh-ps {{ font-size:11px; color:#aaa; margin-top:1px; }}
 .mh-sec {{ font-size:9.5px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase;
     color:#c0bfbb; display:block; margin-bottom:6px; }}
-.mh-card {{ background:#fff; border:1px solid #e8e8e4; border-radius:12px; padding:16px 18px; margin-bottom:10px; }}
 .stButton > button {{ font-family:'Inter',sans-serif !important; font-weight:600 !important;
     border-radius:8px !important; font-size:12.5px !important; height:36px !important; transition:all .13s ease !important; }}
 .stButton > button[kind="primary"] {{ background:{ACCENT} !important; border:2px solid {ACCENT} !important;
@@ -492,13 +494,14 @@ hr {{ border-color:#eee !important; margin:10px 0 !important; }}
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.3px;margin-bottom:4px">✅ CSV Validator</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.3px;margin-bottom:4px">CSV Validator</div>', unsafe_allow_html=True)
     st.markdown('<div style="font-size:10px;color:#555;margin-bottom:16px">early-stop fallback validation</div>', unsafe_allow_html=True)
     st.divider()
     res = st.session_state.get("cv_results", [])
     if res:
-        xlsx = build_xlsx(res)
-        st.download_button("⬇  Export .xlsx", xlsx,
+        orig_cols = st.session_state.get("cv_original_cols", [])
+        xlsx = build_xlsx(res, orig_cols)
+        st.download_button("Export .xlsx", xlsx,
             f"validated_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="sx_xlsx", use_container_width=True)
@@ -509,20 +512,22 @@ with st.sidebar:
         tc = sum(len(r.get("val_log",[])) for r in res)
         saved = tc - nv
         st.markdown(f'<div style="font-size:11px;color:#666;line-height:2.2">'
+            f'Total rows: <strong style="color:#fff">{len(res)}</strong><br>'
             f'Checked: <strong style="color:#fff">{nv}</strong><br>'
             f'Deliverable: <strong style="color:#4ade80">{nd}</strong><br>'
             f'Fallbacks: <strong style="color:#22d3ee">{nf}</strong><br>'
-            f'Extra checks saved by early-stop: <strong style="color:#22d3ee">{saved}</strong></div>', unsafe_allow_html=True)
+            f'Checks saved: <strong style="color:#22d3ee">{saved}</strong></div>', unsafe_allow_html=True)
     st.divider()
     st.markdown('<div style="font-size:9px;color:#333;line-height:1.8">'
         'Upload CSV -> pick 2 columns<br>'
         'Best Email -> validated first<br>'
         'All Emails -> fallback pool<br>'
-        'Stops on first ✅ Deliverable</div>', unsafe_allow_html=True)
+        'Empty rows kept in XLSX<br>'
+        'Stops on first Deliverable</div>', unsafe_allow_html=True)
 
 # ── Session State ─────────────────────────────────────────────────────────────
 for k, v in {"cv_results":[],"cv_running":False,"cv_idx":0,"cv_log":[],"cv_df":None,
-             "cv_queue":[]}.items():
+             "cv_queue":[],"cv_original_cols":[]}.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -531,7 +536,7 @@ st.markdown(f"""
   <div class="mh-pi">✅</div>
   <div>
     <div class="mh-pt">CSV Email Validator</div>
-    <div class="mh-ps">upload CSV · pick Best Email + All Emails columns · early-stop on first Deliverable · styled XLSX</div>
+    <div class="mh-ps">upload CSV · pick columns · early-stop on first Deliverable · keeps all original data</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -544,7 +549,7 @@ if uploaded:
         df = pd.read_csv(uploaded)
         st.session_state.cv_df = df
         cols = list(df.columns)
-        st.markdown(f'<div class="mh-info">✓ Loaded <strong>{len(df)}</strong> rows · <strong>{len(cols)}</strong> columns</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="mh-info">Loaded <strong>{len(df)}</strong> rows · <strong>{len(cols)}</strong> columns</div>', unsafe_allow_html=True)
         st.caption("Preview (first 5 rows)")
         st.dataframe(df.head(5), use_container_width=True, hide_index=True, height=160)
     except Exception as e:
@@ -586,20 +591,33 @@ if df is not None:
         ar = str(row[all_col]).strip() if (all_col != "— None —" and pd.notna(row.get(all_col))) else ""
         ae = parse_email_cell(ar) if ar else []
         ae = [e for e in ae if e.lower() != be.lower()]
-        if dom_col != "— Auto —" and pd.notna(row.get(dom_col)):
+        
+        has_emails = bool(be or ae)
+
+        if not has_emails:
+            dom = f"row_{i+1}"
+        elif dom_col != "— Auto —" and pd.notna(row.get(dom_col)):
             dom = str(row[dom_col]).strip()
         elif be: dom = be.split("@")[-1]
-        elif ae: dom = ae[0].split("@")[-1]
-        else: dom = f"row_{i+1}"
-        queue.append({"row_idx": i+1, "domain": dom, "original_email": be, "all_emails": ae})
+        else: dom = ae[0].split("@")[-1]
+        
+        queue.append({
+            "row_idx": i+1, 
+            "domain": dom, 
+            "original_email": be, 
+            "all_emails": ae,
+            "has_emails": has_emails,
+            "original_row_data": row.to_dict()
+        })
 
-    nv = sum(1 for q in queue if q["original_email"] or q["all_emails"])
-    nw = sum(1 for q in queue if q["all_emails"])
+    nv = sum(1 for q in queue if q["has_emails"])
+    n_empty = len(queue) - nv
     st.divider()
     if nv:
-        st.markdown(f'<div class="mh-info">✓ <strong>{nv}</strong> rows with emails · <strong>{nw}</strong> have fallback pool</div>', unsafe_allow_html=True)
+        empty_txt = f" · <strong>{n_empty}</strong> empty rows (retained in export)" if n_empty else ""
+        st.markdown(f'<div class="mh-info">Validatable: <strong>{nv}</strong> rows{empty_txt}</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="mh-warn">No valid emails found. Check your column mapping.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mh-warn">No valid emails found in any row. Check your column mapping.</div>', unsafe_allow_html=True)
 
     running = st.session_state.cv_running
     vc1, vc2, vc3 = st.columns([3, 1, 2])
@@ -609,9 +627,11 @@ if df is not None:
             if st.button(f"Validate {nv} row(s)", type="primary", use_container_width=True, disabled=not nv, key="cv_go"):
                 st.session_state.cv_results = []; st.session_state.cv_idx = 0
                 st.session_state.cv_log = []; st.session_state.cv_running = True
-                st.session_state.cv_queue = queue; st.rerun()
+                st.session_state.cv_queue = queue
+                st.session_state.cv_original_cols = list(df.columns)
+                st.rerun()
         else:
-            if st.button("⏹ Stop", type="secondary", use_container_width=True, key="cv_stop"):
+            if st.button("Stop", type="secondary", use_container_width=True, key="cv_stop"):
                 st.session_state.cv_running = False; st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     with vc2:
@@ -619,14 +639,17 @@ if df is not None:
             if st.button("Clear", type="secondary", use_container_width=True, key="cv_clr"):
                 st.session_state.cv_results = []; st.session_state.cv_log = []; st.rerun()
     with vc3:
-        st.markdown('<div style="font-size:10.5px;color:#aaa;padding-top:12px">⏱ ~3-8s/email · stops on first ✅</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:10.5px;color:#aaa;padding-top:12px">~3-8s/email · stops on first Deliverable</div>', unsafe_allow_html=True)
 
     res = st.session_state.cv_results; cq = st.session_state.get("cv_queue", queue); ci = st.session_state.cv_idx; tot = len(cq)
     if running and tot > 0:
-        pct = round(ci/tot*100, 1); cur = cq[ci] if ci < tot else None
-        ce = cur["original_email"] or (cur["all_emails"][0] if cur and cur["all_emails"] else "—")
+        # Only count valid emails towards progress percentage visually
+        valid_done = sum(1 for r in res if r.get("has_emails"))
+        pct = round(valid_done/nv*100, 1) if nv else 0
+        cur = cq[ci] if ci < tot else None
+        ce = cur.get("original_email") or (cur["all_emails"][0] if cur and cur.get("all_emails") else "—")
         st.markdown(f'<div style="font-size:12px;font-weight:700;color:#111;margin:6px 0 2px">'
-            f'Row {ci+1}/{tot} — <code style="color:{ACCENT}">{ce[:40]}</code></div>'
+            f'Validating {valid_done}/{nv} — <code style="color:{ACCENT}">{ce[:40]}</code></div>'
             f'<div class="vp"><div class="vf" style="width:{pct}%"></div></div>'
             f'<div style="font-size:20px;font-weight:800;color:{ACCENT};text-align:right;margin-top:-4px">{pct}%</div>',
             unsafe_allow_html=True)
@@ -636,11 +659,11 @@ if df is not None:
         h = ""
         for kind, text in ll[-80:]:
             if   kind == "row":  h += f'<div class="lr">[ {text} ]</div>'
-            elif kind == "try":  h += f'<div class="li">  → {text}</div>'
-            elif kind == "ok":   h += f'<div class="lo">  ✓ {text}</div>'
-            elif kind == "fail": h += f'<div class="lf">  ✗ {text}</div>'
-            elif kind == "skip": h += f'<div class="ls">  ! {text}</div>'
-            elif kind == "stop": h += f'<div class="lx">  ■ STOP — {text}</div>'
+            elif kind == "try":  h += f'<div class="li">  -> {text}</div>'
+            elif kind == "ok":   h += f'<div class="lo">  OK {text}</div>'
+            elif kind == "fail": h += f'<div class="lf">  FAIL {text}</div>'
+            elif kind == "skip": h += f'<div class="ls">  SKIP {text}</div>'
+            elif kind == "stop": h += f'<div class="lx">  STOP - {text}</div>'
         st.markdown(f'<div class="mh-log">{h}</div>', unsafe_allow_html=True)
 
     if res:
@@ -651,9 +674,9 @@ if df is not None:
         nfb = sum(1 for r in res if r.get("was_fallback"))
         tc = sum(len(r.get("val_log",[])) for r in res)
         m1,m2,m3,m4,m5,m6 = st.columns(6)
-        m1.metric("Checked", nvc); m2.metric("✅ Deliverable", nd)
-        m3.metric("⚠️ Risky", nri); m4.metric("❌ Failed", nb)
-        m5.metric("↻ Fallback", nfb); m6.metric("Emails Checked", tc)
+        m1.metric("Checked", nvc); m2.metric("Deliverable", nd)
+        m3.metric("Risky", nri); m4.metric("Failed", nb)
+        m5.metric("Fallback", nfb); m6.metric("Emails Checked", tc)
 
     if res:
         srch = st.text_input("Filter...", placeholder="domain or email...", label_visibility="collapsed", key="cv_sr")
@@ -661,36 +684,42 @@ if df is not None:
         for r in res:
             v = r.get("val") or {}; s = v.get("status",""); em = r.get("validated_email","")
             orig = r.get("original_email",""); fb = r.get("was_fallback"); cf = r.get("confidence")
-            ic = {"Deliverable":"✅","Risky":"⚠️","Not Deliverable":"❌"}.get(s,"⏳")
-            ed = f"{em} ↻" if fb and orig != em else em
-            od = orig if orig else ("(pool)" if r.get("all_emails") else "(none)")
+            
+            if not r.get("has_emails"):
+                rows.append({"#":r["row_idx"],"Domain":r["domain"],"Original":"(empty)","Validated":"—",
+                    "Status":"Skipped","Tier":"—","Score":"—","Reason":"—",
+                    "SPF":"—","DMARC":"—","CA":"—","Pool":0,"Checked":0})
+                continue
+                
+            ed = f"{em} (fallback)" if fb and orig != em else em
+            od = orig if orig else "(pool)"
             rows.append({"#":r["row_idx"],"Domain":r["domain"],"Original":od,"Validated":ed,
-                "Status":f"{ic} {s}" if s else "—","Tier":tier_short(em) if em else "—",
+                "Status": s if s else "Pending","Tier":tier_short(em) if em else "—",
                 "Score":cf if cf is not None else "—","Reason":v.get("reason","—") if v else "—",
-                "SPF":("ok" if v.get("spf") else "no") if v else "—",
-                "DMARC":("ok" if v.get("dmarc") else "no") if v else "—",
-                "CA":("yes" if v.get("catch_all") else "no") if v else "—",
+                "SPF":("Yes" if v.get("spf") else "No") if v else "—",
+                "DMARC":("Yes" if v.get("dmarc") else "No") if v else "—",
+                "CA":("Yes" if v.get("catch_all") else "No") if v else "—",
                 "Pool":len(r["all_emails"]),"Checked":len(r.get("val_log",[]))})
         dr = pd.DataFrame(rows)
         if srch:
             m = (dr["Domain"].str.contains(srch,case=False,na=False)|dr["Original"].str.contains(srch,case=False,na=False)|dr["Validated"].str.contains(srch,case=False,na=False))
             dr = dr[m]
-        st.caption(f'**{len(dr)}** of {len(res)} · ↻ fallback · Pool = fallback size · Checked = emails validated before stop')
+        st.caption(f'**{len(dr)}** of {len(res)}  |  (fallback) = switched email  |  Pool = fallback size  |  Checked = emails validated before stop')
         st.dataframe(dr, use_container_width=True, hide_index=True,
             height=min(560, 44+max(len(dr),1)*36),
             column_config={"#":st.column_config.NumberColumn("#",width=45),
                 "Domain":st.column_config.TextColumn("Domain",width=140),
                 "Original":st.column_config.TextColumn("Original Email",width=200),
-                "Validated":st.column_config.TextColumn("Validated Email",width=200),
+                "Validated":st.column_config.TextColumn("Validated Email",width=220),
                 "Status":st.column_config.TextColumn("Status",width=140),
                 "Tier":st.column_config.TextColumn("Tier",width=60),
                 "Score":st.column_config.NumberColumn("Score",width=50),
                 "Reason":st.column_config.TextColumn("Reason",width=150),
-                "SPF":st.column_config.TextColumn("SPF",width=38),
-                "DMARC":st.column_config.TextColumn("DMARC",width=48),
-                "CA":st.column_config.TextColumn("CA",width=38),
-                "Pool":st.column_config.NumberColumn("Pool",width=42),
-                "Checked":st.column_config.NumberColumn("Checked",width=58)})
+                "SPF":st.column_config.TextColumn("SPF",width=45),
+                "DMARC":st.column_config.TextColumn("DMARC",width=50),
+                "CA":st.column_config.TextColumn("CA",width=45),
+                "Pool":st.column_config.NumberColumn("Pool",width=45),
+                "Checked":st.column_config.NumberColumn("Checked",width=60)})
 
     if st.session_state.cv_running:
         q = st.session_state.cv_queue; idx = st.session_state.cv_idx; tot = len(q)
@@ -698,34 +727,58 @@ if df is not None:
             st.session_state.cv_running = False; st.rerun()
         else:
             item = q[idx]; rn = item["row_idx"]; dom = item["domain"]
-            best = item["original_email"]; ae = item["all_emails"]
-            st.session_state.cv_log.append(("row", f"Row {rn} — {dom}"))
-            if not best and not ae:
-                st.session_state.cv_log.append(("skip", "No emails"))
-                st.session_state.cv_results.append({"row_idx":rn,"domain":dom,"original_email":"",
-                    "validated_email":"","all_emails":[],"val":None,"was_fallback":False,"confidence":None,"val_log":[]})
+            orig_data = item.get("original_row_data", {})
+            
+            # BATCH SKIP EMPTY ROWS TO PREVENT UI STUTTERING
+            if not item.get("has_emails"):
+                st.session_state.cv_results.append({
+                    "row_idx":rn,"domain":dom,"original_email":"",
+                    "validated_email":"","all_emails":[],"val":None,"was_fallback":False,
+                    "confidence":None,"val_log":[], "original_row_data": orig_data,
+                    "has_emails": False
+                })
+                next_idx = idx + 1
+                # Look ahead and grab all consecutive empty rows so we skip them in 1 frame
+                while next_idx < tot and not q[next_idx].get("has_emails"):
+                    n_item = q[next_idx]
+                    st.session_state.cv_results.append({
+                        "row_idx": n_item["row_idx"], "domain": n_item["domain"], "original_email":"",
+                        "validated_email":"","all_emails":[],"val":None,"was_fallback":False,
+                        "confidence":None,"val_log":[], "original_row_data": n_item.get("original_row_data", {}),
+                        "has_emails": False
+                    })
+                    next_idx += 1
+                
+                st.session_state.cv_idx = next_idx
+                if st.session_state.cv_idx >= tot: st.session_state.cv_running = False
+                st.rerun()
+
+            # NORMAL VALIDATION FLOW
             else:
+                best = item["original_email"]; ae = item["all_emails"]
+                st.session_state.cv_log.append(("row", f"Row {rn} - {dom}"))
+                
                 st.session_state.cv_log.append(("try", f"Best: {best or '(none)'}"))
                 val_em, val_res, was_fb, vlog = validate_with_early_stop(best, ae)
                 for ce, cs, cr in vlog:
                     if cs == "Deliverable":
-                        st.session_state.cv_log.append(("ok", f"{ce} — DELIVERABLE"))
+                        st.session_state.cv_log.append(("ok", f"{ce} - DELIVERABLE"))
                         st.session_state.cv_log.append(("stop", f"Found deliverable, stopping"))
                     elif cs == "Risky":
-                        st.session_state.cv_log.append(("try", f"{ce} — Risky ({cr})"))
+                        st.session_state.cv_log.append(("try", f"{ce} - Risky ({cr})"))
                     elif cs == "Not Deliverable":
-                        st.session_state.cv_log.append(("fail", f"{ce} — {cr}"))
+                        st.session_state.cv_log.append(("fail", f"{ce} - {cr}"))
                     else:
-                        st.session_state.cv_log.append(("skip", f"{ce} — {cr}"))
+                        st.session_state.cv_log.append(("skip", f"{ce} - {cr}"))
                 if was_fb:
-                    st.session_state.cv_log.append(("ok", f"↻ {best} -> {val_em}"))
+                    st.session_state.cv_log.append(("ok", f"Fallback: {best} -> {val_em}"))
                 cf = confidence_score(val_em, val_res) if val_res else None
                 st.session_state.cv_results.append({"row_idx":rn,"domain":dom,"original_email":best,
                     "validated_email":val_em,"all_emails":ae,"val":val_res,"was_fallback":was_fb,
-                    "confidence":cf,"val_log":vlog})
-            st.session_state.cv_idx = idx + 1
-            if st.session_state.cv_idx >= tot: st.session_state.cv_running = False
-            st.rerun()
+                    "confidence":cf,"val_log":vlog, "original_row_data": orig_data, "has_emails": True})
+                st.session_state.cv_idx = idx + 1
+                if st.session_state.cv_idx >= tot: st.session_state.cv_running = False
+                st.rerun()
 
 if df is None and not st.session_state.cv_results:
     st.markdown("""
@@ -737,9 +790,10 @@ if df is None and not st.session_state.cv_results:
             Optionally a second column with <strong>additional emails</strong><br>
             (semicolon, comma, or pipe separated) as fallback pool.<br><br>
             <strong style="color:#16a34a">How it works:</strong><br>
-            1. Validates the <strong>Best Email</strong> first<br>
-            2. If not deliverable -> tries <strong>All Emails</strong> in tier order<br>
-            3. <strong>Stops immediately</strong> when first Deliverable is found<br>
-            4. Exports styled 3-sheet XLSX with full audit trail
+            1. Empty rows are <strong>kept in export</strong> but skipped during validation<br>
+            2. Validates the <strong>Best Email</strong> first<br>
+            3. If not deliverable -> tries <strong>All Emails</strong> in tier order<br>
+            4. <strong>Stops immediately</strong> when first Deliverable is found<br>
+            5. Exports XLSX with <strong>all your original data kept intact</strong> + validation appended
         </div>
     </div>""", unsafe_allow_html=True)
