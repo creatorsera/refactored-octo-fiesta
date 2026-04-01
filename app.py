@@ -1,5 +1,5 @@
 """
-app.py — CSV Email Validator (standalone)
+app.py — CSV Email Validator (Standalone)
 Upload CSV -> pick Best Email + All Emails columns -> validate with early-stop
 on first Deliverable -> styled 3-sheet XLSX export with full audit trail.
 """
@@ -25,36 +25,36 @@ EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re
 TIER1 = re.compile(r"^(editor|admin|press|advert|contact)[a-z0-9._%+\-]*@", re.IGNORECASE)
 TIER2 = re.compile(r"^(info|sales|hello|office|team|support|help)[a-z0-9._%+\-]*@", re.IGNORECASE)
 
-BLOCKED_TLDS = {
+BLOCKED_TLDS = [
     'png','jpg','jpeg','webp','gif','svg','ico','bmp','tiff','avif','mp4','mp3',
     'wav','ogg','mov','avi','webm','pdf','zip','rar','tar','gz','7z','js','css',
     'php','asp','aspx','xml','json','ts','jsx','tsx','woff','woff2','ttf','eot',
-    'otf','map','exe','dmg','pkg','deb','apk',
-}
-PLACEHOLDER_DOMAINS = {
+    'otf','map','exe','dmg','pkg','deb','apk'
+]
+PLACEHOLDER_DOMAINS = [
     'example.com','example.org','example.net','test.com','domain.com',
-    'yoursite.com','yourwebsite.com','website.com','email.com','placeholder.com',
-}
-PLACEHOLDER_LOCALS = {
+    'yoursite.com','yourwebsite.com','website.com','email.com','placeholder.com'
+]
+PLACEHOLDER_LOCALS = [
     'you','user','name','email','test','example','someone','username',
-    'yourname','youremail','enter','address','sample',
-}
+    'yourname','youremail','enter','address','sample'
+]
 SUPPRESS_PREFIXES = [
     'noreply','no-reply','donotreply','do-not-reply','mailer-daemon','bounce',
     'bounces','unsubscribe','notifications','notification','newsletter',
     'newsletters','postmaster','webmaster','auto-reply','autoreply','daemon',
-    'robot','alerts','alert','system',
-}
-FREE_EMAIL_DOMAINS = {
+    'robot','alerts','alert','system'
+]
+FREE_EMAIL_DOMAINS = [
     "gmail.com","yahoo.com","hotmail.com","outlook.com","aol.com",
-    "icloud.com","protonmail.com","zoho.com","live.com","msn.com",
-}
-_DISPOSABLE_FALLBACK = {
+    "icloud.com","protonmail.com","zoho.com","live.com","msn.com"
+]
+_DISPOSABLE_FALLBACK = [
     'mailinator.com','guerrillamail.com','tempmail.com','throwaway.email','yopmail.com',
     'sharklasers.com','spam4.me','trashmail.com','trashmail.me','maildrop.cc',
     '10minutemail.com','fakeinbox.com','discard.email','mailnesia.com',
-    'tempr.email','trashmail.at','trashmail.io','wegwerfemail.de','meltmail.com',
-}
+    'tempr.email','trashmail.at','trashmail.io','wegwerfemail.de','meltmail.com'
+]
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_disposable_domains():
@@ -67,7 +67,7 @@ def fetch_disposable_domains():
             return set(r.text.splitlines())
     except Exception:
         pass
-    return _DISPOSABLE_FALLBACK
+    return set(_DISPOSABLE_FALLBACK)
 
 # ── EMAIL HELPERS ─────────────────────────────────────────────────────────────
 def is_valid_email(email):
@@ -195,7 +195,7 @@ def _deliverability(syntax, mx_ok, mailbox_ok, disposable, free, catch_all, spf_
     else:
         if catch_all:  return "Risky", "Catch-all, mailbox unknown"
         if free:       return "Deliverable", "Free provider (unverified)"
-        if not spf_ok: return "Risky", "No SPF — spam risk"
+        if not spf_ok: return "Risky", "No SPF - spam risk"
         return "Deliverable", "MX/SPF OK, mailbox unconfirmed"
 
 def validate_email_full(email):
@@ -414,7 +414,7 @@ def build_xlsx(results, original_columns):
         ("Extra checks (fallbacks)", saved, "fallback"),
         ("Avg checks per valid row", ac, "avg"),
         ("Avg confidence score", avgc, "avg"),
-    ], "CSV Email Validator Results", f"{nt} total rows · {n_val_rows} validated · {n_empty} empty retained")
+    ], "CSV Email Validator Results", f"{nt} total rows - {n_val_rows} validated - {n_empty} empty retained")
 
     out = io.BytesIO(); wb.save(out); out.seek(0)
     return out.getvalue()
@@ -643,7 +643,6 @@ if df is not None:
 
     res = st.session_state.cv_results; cq = st.session_state.get("cv_queue", queue); ci = st.session_state.cv_idx; tot = len(cq)
     if running and tot > 0:
-        # Only count valid emails towards progress percentage visually
         valid_done = sum(1 for r in res if r.get("has_emails"))
         pct = round(valid_done/nv*100, 1) if nv else 0
         cur = cq[ci] if ci < tot else None
@@ -729,7 +728,6 @@ if df is not None:
             item = q[idx]; rn = item["row_idx"]; dom = item["domain"]
             orig_data = item.get("original_row_data", {})
             
-            # BATCH SKIP EMPTY ROWS TO PREVENT UI STUTTERING
             if not item.get("has_emails"):
                 st.session_state.cv_results.append({
                     "row_idx":rn,"domain":dom,"original_email":"",
@@ -738,7 +736,6 @@ if df is not None:
                     "has_emails": False
                 })
                 next_idx = idx + 1
-                # Look ahead and grab all consecutive empty rows so we skip them in 1 frame
                 while next_idx < tot and not q[next_idx].get("has_emails"):
                     n_item = q[next_idx]
                     st.session_state.cv_results.append({
@@ -753,7 +750,6 @@ if df is not None:
                 if st.session_state.cv_idx >= tot: st.session_state.cv_running = False
                 st.rerun()
 
-            # NORMAL VALIDATION FLOW
             else:
                 best = item["original_email"]; ae = item["all_emails"]
                 st.session_state.cv_log.append(("row", f"Row {rn} - {dom}"))
